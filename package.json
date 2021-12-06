@@ -1,0 +1,17 @@
+{
+  "name": "express-mjpeg",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./app"
+  },
+  "author": {
+    "name": "chengweisun"
+  },
+  "dependencies": {
+    "cookie-parser": "~1.4.4",
+    "cors": "^2.8.5",
+    "express": "~4.16.1",
+    "uuid": "^8.3.2"
+  }
+}
