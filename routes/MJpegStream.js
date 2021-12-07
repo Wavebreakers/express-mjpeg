@@ -13,6 +13,8 @@ class MJpegStream {
 		this.boundary = 'frame';
 		this.streaming = false;
 
+		this.lastShot = [null];
+
 		// serve UDP service
 		this.server = this.serveUdp(port);
 	}
@@ -84,6 +86,7 @@ class MJpegStream {
 		return udp
 	}
 	async broadcast(content) {
+		this.lastShot[0] = content;
 		for (let i = parseInt(this.clients.length); i--;) {
 			this.clients[i][1].write(`--${this.boundary}\r\n`);
 			this.clients[i][1].write('Content-Type: image/jpeg\r\n');

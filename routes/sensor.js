@@ -156,6 +156,15 @@ router.get('/:hash/stream', (req, res) => {
 	}
 });
 
+router.get('/:hash/shot', (req, res) => {
+	if (stream.lastShot[0]) {
+		res.type('jpeg');
+		res.end(stream.lastShot[0]);
+	} else {
+		res.status(404).send('buff lose');
+	}
+});
+
 router.get('/:hash/restart', (req, res) => {
 	res.status(202).send('Accept');
 	try {
