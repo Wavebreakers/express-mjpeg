@@ -13,8 +13,8 @@ let instance = { kill: () => { }, killed: true, exitCode: 1 };
 let config = {
 	quality: 12, // 2-31; lower to higher quality
 	fps: 4,
-	width: 640,
-	height: 480,
+	width: 1280,
+	height: 720,
 	chunk_size: 1024, // udp chunk size
 	resource: '/dev/video0',
 	resource_format: 'mjpeg',
@@ -27,7 +27,44 @@ function ffmpeg() {
 	return new Promise((resolve, reject) => {
 		try {
 			let sub;
-			if (process.env.EXPRESS_FFMPEG_PIPE || config.output === 'pipe') {
+			let io = [0, 1];
+			let buff = [[], []];
+			if (process.env.EXPRESS_FFMPEG_DESKTOP) {
+				sub = spawn('ffmpeg', [
+					'-f', 'gdigrab',
+					'-r', config.fps,
+					'-offset_x', 0,
+					'-offset_y', 0,
+					'-video_size', `${config.width}x${config.height}`,
+					'-show_region', 1,
+					'-i', 'desktop',
+					'-q:v', config.quality,
+					'-f', 'mjpeg',
+					'-flush_packets', 1,
+					'pipe:1'
+				]);
+				sub.stdout.on('data', (data) => {
+					if (stream.streaming) {
+						let chunk = Buffer.from(data);
+						let begin_at = chunk.indexOf(beginByte); // SOI
+						let close_at = chunk.indexOf(closeByte); // EOI
+
+						if (begin_at == 0 && chunk.length - close_at == 2) {
+							//console.log(`stdout: JFIF ${chunk.length} (${data.length})`);
+							stream.broadcast(chunk);
+						} else if (begin_at == 0) {
+							buff[io[0]].push(chunk);
+						} else if (chunk.length - close_at == 2) {
+							buff[io[0]].push(chunk);
+							swap(io);
+							stream.broadcast(Buffer.concat(buff[io[1]]));
+							buff[io[1]] = [];
+						} else {
+							buff[io[0]].push(chunk);
+						}
+					}
+				});
+			} else if (process.env.EXPRESS_FFMPEG_PIPE || config.output === 'pipe') {
 				sub = spawn('ffmpeg', [
 					'-f', 'v4l2',
 					'-input_format', config.resource_format,
@@ -48,6 +85,15 @@ function ffmpeg() {
 						if (begin_at == 0 && chunk.length - close_at == 2) {
 							//console.log(`stdout: JFIF ${chunk.length} (${data.length})`);
 							stream.broadcast(chunk);
+						} else if (begin_at == 0) {
+							buff[io[0]].push(chunk);
+						} else if (chunk.length - close_at == 2) {
+							buff[io[0]].push(chunk);
+							swap(io);
+							stream.broadcast(Buffer.concat(buff[io[1]]));
+							buff[io[1]] = [];
+						} else {
+							buff[io[0]].push(chunk);
 						}
 					}
 				});
