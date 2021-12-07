@@ -13,8 +13,8 @@ let instance = { kill: () => { }, killed: true, exitCode: 1 };
 let config = {
 	quality: 12, // 2-31; lower to higher quality
 	fps: 4,
-	width: 1280,
-	height: 720,
+	width: 640,
+	height: 480,
 	chunk_size: 1024, // udp chunk size
 	resource: '/dev/video0',
 	resource_format: 'mjpeg',
