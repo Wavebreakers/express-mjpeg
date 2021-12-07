@@ -1,24 +1,6 @@
 const dgram = require('dgram');
-const fs = require('fs');
 const uuid = require('uuid');
-
-// reference: https://en.wikipedia.org/wiki/JPEG_File_Interchange_Format#File_format_structure
-const beginByte = new Uint8Array([0xFF, 0xD8]); // JFIF SOI: FF D8
-const closeByte = new Uint8Array([0xFF, 0xD9]); // JFIF EOI: FF D9
-
-/**
- * Property swapper
- * @param {Object} arr
- * @param {*} i
- * @param {*} j
- * @returns
- */
-function swap(arr, i = 0, j = 1) {
-	let t = arr[i];
-	arr[i] = arr[j];
-	arr[j] = t;
-	return arr;
-}
+const { swap, beginByte, closeByte } = require('../utils');
 
 class MJpegStream {
 	/**
@@ -30,7 +12,6 @@ class MJpegStream {
 		this.clients = [];
 		this.boundary = 'frame';
 		this.streaming = false;
-		this.chunkHandler = () => { };
 
 		// serve UDP service
 		this.server = this.serveUdp(port);
@@ -40,6 +21,9 @@ class MJpegStream {
 	}
 	serveUdp(port) {
 		let udp = dgram.createSocket('udp4');
+		let mounted = false;
+		let io = [0, 1];
+		let buff = [[], []];
 		udp.on('error', (err) => {
 			console.log(`server error:\n${err.stack}`);
 			udp.close(() => {
@@ -58,30 +42,12 @@ class MJpegStream {
 				} catch (error) { }
 			}
 		});
-
-		udp.bind(port);
-		return udp
-	}
-	queue(request, response) {
-		if (response.socket == null) {
-			console.log('response.sock is null');
-			return;
-		}
-
-		if (this.streaming) {
-			this._newClient(request, response);
-		} else {
-			this.streaming = true;
-			this._newClient(request, response);
-			let mounted = false;
-			let io = [0, 1]; // $[0] to write, $[1] to read
-			let buff = [[], []];
-			this.chunkHandler = (msg, rinfo) => {
+		udp.on('message', (msg, rinfo) => {
+			if (this.streaming) {
 				let chunk = Buffer.from(msg);
 				let begin_at = chunk.indexOf(beginByte); // SOI
 				let close_at = chunk.indexOf(closeByte); // EOI
 				let flag = false; // true to write response
-
 				if (mounted) {
 					if (close_at == chunk.length - 2) {
 						// close at chunk tail;
@@ -108,21 +74,41 @@ class MJpegStream {
 
 				if (flag) {
 					let content = Buffer.concat(buff[io[1]]);
-					buff[io[1]] = []; // flush read buffer
-					// write response
-					// TODO: use queue to control frame stand
-					for (let i = parseInt(this.clients.length); i--;) {
-						// client: [id, response]
-						this.clients[i][1].write(`--${this.boundary}\r\n`);
-						this.clients[i][1].write('Content-Type: image/jpeg\r\n');
-						this.clients[i][1].write(`Content-Length: ${content.length}\r\n`);
-						this.clients[i][1].write('\r\n');
-						this.clients[i][1].write(content, 'binary');
-						this.clients[i][1].write('\r\n');
-					}
+					buff[io[1]].length = 0;
+					this.broadcast(content);
 				}
 			}
-			this.server.on('message', this.chunkHandler);
+		});
+
+		udp.bind(port);
+		return udp
+	}
+	async broadcast(content) {
+		for (let i = parseInt(this.clients.length); i--;) {
+			this.clients[i][1].write(`--${this.boundary}\r\n`);
+			this.clients[i][1].write('Content-Type: image/jpeg\r\n');
+			this.clients[i][1].write(`Content-Length: ${content.length}\r\n`);
+			this.clients[i][1].write('\r\n');
+			this.clients[i][1].write(content, 'binary');
+			this.clients[i][1].write('\r\n');
+			if (this.clients[i][2] == -1) {
+				continue;
+			} else if ((this.clients[i][2] += 1) > 120) {
+				this.clients[i][1].end();
+			}
+		}
+	}
+	queue(request, response) {
+		if (response.socket == null) {
+			console.log('response.socket is null');
+			return;
+		}
+
+		if (this.streaming) {
+			this._newClient(request, response);
+		} else {
+			this.streaming = true;
+			this._newClient(request, response);
 		}
 	}
 	_newClient(request, response) {
@@ -134,21 +120,17 @@ class MJpegStream {
 			'Pragma': 'no-cache',
 			//'Expires': 'Thu, 01 Jan 1970 00:00:00 GMT', // new Date(0).toGMTString()
 		});
-
-		this.clients.push([id, response]);
+		if (request.query.upgrade) {
+			this.clients.push([id, response, -1, request]);
+		} else {
+			this.clients.push([id, response, 0, request]);
+		}
 
 		response.socket.on('close', () => {
-			//console.log(`close ${id}`);
 			this.clients.splice(this.clients.findIndex(([_id]) => id === _id), 1);
 
 			if (this.clients.length == 0) {
-				//console.log(`destroy listener`);
 				this.streaming = false;
-				try {
-					this.server.removeListener('message', this.chunkHandler);
-				} catch (error) {
-					fs.writeFile(`./last-stream-error.log`, `${error && error.stack}`, 'utf-8', () => { });
-				}
 			}
 		})
 	}
