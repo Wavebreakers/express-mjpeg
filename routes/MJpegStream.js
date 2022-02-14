@@ -13,7 +13,7 @@ class MJpegStream {
 		this.boundary = 'frame';
 		this.streaming = false;
 
-		this.lastShot = [null];
+		this.shotQueue = [];
 
 		// serve UDP service
 		this.server = this.serveUdp(port);
@@ -86,7 +86,12 @@ class MJpegStream {
 		return udp
 	}
 	async broadcast(content) {
-		this.lastShot[0] = content;
+		if (this.shotQueue.length > 0) {
+			let res = this.shotQueue.shift();
+			res.type('jpeg');
+			res.end(content);
+		}
+
 		for (let i = parseInt(this.clients.length); i--;) {
 			this.clients[i][1].write(`--${this.boundary}\r\n`);
 			this.clients[i][1].write('Content-Type: image/jpeg\r\n');
@@ -114,6 +119,10 @@ class MJpegStream {
 			this._newClient(request, response);
 		}
 	}
+
+	_newShot(request, response) {
+		this.shotQueue.push(response);
+	}
 	_newClient(request, response) {
 		const id = uuid.v4();
 		response.writeHead(200, {
@@ -123,11 +132,14 @@ class MJpegStream {
 			'Pragma': 'no-cache',
 			//'Expires': 'Thu, 01 Jan 1970 00:00:00 GMT', // new Date(0).toGMTString()
 		});
+		let bag = [];
 		if (request.query.upgrade) {
-			this.clients.push([id, response, -1, request]);
+			bag = [id, response, -1, request, false];
 		} else {
-			this.clients.push([id, response, 0, request]);
+			bag = [id, response, 0, request, false];
 		}
+
+		this.clients.push(bag);
 
 		response.socket.on('close', () => {
 			this.clients.splice(this.clients.findIndex(([_id]) => id === _id), 1);

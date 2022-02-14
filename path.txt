@@ -1,0 +1,4 @@
+ffmpeg -f v4l2 -input_format mjpeg -i /dev/video0 -q:v 12 -r 4 -s 640x480 -f mjpeg -flush_packets 0 udp://127.0.0.1:48545?pkt_size=1024
+
+
+D:\workspace\node-video-recorder\bin\ffmpeg

@@ -11,10 +11,10 @@ let stream = new MJpegStream(tunnel);
 let mounted = process.env.EXPRESS_FFMPEG_SKIP ? true : false;
 let instance = { kill: () => { }, killed: true, exitCode: 1 };
 let config = {
-	quality: 12, // 2-31; lower to higher quality
-	fps: 4,
-	width: 640,
-	height: 480,
+	quality: 2, // 2-31; lower to higher quality
+	fps: 1,
+	width: 1280,
+	height: 960,
 	chunk_size: 1024, // udp chunk size
 	resource: '/dev/video0',
 	resource_format: 'mjpeg',
@@ -44,7 +44,7 @@ function ffmpeg() {
 					'pipe:1'
 				]);
 				sub.stdout.on('data', (data) => {
-					if (stream.streaming) {
+					if (stream.streaming || stream.shotQueue.length > 0) {
 						let chunk = Buffer.from(data);
 						let begin_at = chunk.indexOf(beginByte); // SOI
 						let close_at = chunk.indexOf(closeByte); // EOI
@@ -77,7 +77,7 @@ function ffmpeg() {
 					'pipe:1',
 				]);
 				sub.stdout.on('data', (data) => {
-					if (stream.streaming) {
+					if (stream.streaming || stream.shotQueue.length > 0) {
 						let chunk = Buffer.from(data);
 						let begin_at = chunk.indexOf(beginByte); // SOI
 						let close_at = chunk.indexOf(closeByte); // EOI
@@ -157,12 +157,7 @@ router.get('/:hash/stream', (req, res) => {
 });
 
 router.get('/:hash/shot', (req, res) => {
-	if (stream.lastShot[0]) {
-		res.type('jpeg');
-		res.end(stream.lastShot[0]);
-	} else {
-		res.status(404).send('buff lose');
-	}
+	stream._newShot(req, res);
 });
 
 router.get('/:hash/restart', (req, res) => {
