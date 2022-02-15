@@ -11,12 +11,13 @@ let stream = new MJpegStream(tunnel);
 let mounted = process.env.EXPRESS_FFMPEG_SKIP ? true : false;
 let instance = { kill: () => { }, killed: true, exitCode: 1 };
 let config = {
+	kernel: 'dshow',
 	quality: 2, // 2-31; lower to higher quality
-	fps: 1,
+	fps: 24,
 	width: 1280,
 	height: 960,
 	chunk_size: 1024, // udp chunk size
-	resource: '/dev/video0',
+	resource: 'video=USB Video Device',
 	resource_format: 'mjpeg',
 	output: 'pipe', // pipe|udp
 };
@@ -29,45 +30,10 @@ function ffmpeg() {
 			let sub;
 			let io = [0, 1];
 			let buff = [[], []];
-			if (process.env.EXPRESS_FFMPEG_DESKTOP) {
+			if (process.env.EXPRESS_FFMPEG_PIPE || config.output === 'pipe') {
 				sub = spawn('ffmpeg', [
-					'-f', 'gdigrab',
-					'-r', config.fps,
-					'-offset_x', 0,
-					'-offset_y', 0,
-					'-video_size', `${config.width}x${config.height}`,
-					'-show_region', 1,
-					'-i', 'desktop',
-					'-q:v', config.quality,
-					'-f', 'mjpeg',
-					'-flush_packets', 1,
-					'pipe:1'
-				]);
-				sub.stdout.on('data', (data) => {
-					if (stream.streaming || stream.shotQueue.length > 0) {
-						let chunk = Buffer.from(data);
-						let begin_at = chunk.indexOf(beginByte); // SOI
-						let close_at = chunk.indexOf(closeByte); // EOI
-
-						if (begin_at == 0 && chunk.length - close_at == 2) {
-							//console.log(`stdout: JFIF ${chunk.length} (${data.length})`);
-							stream.broadcast(chunk);
-						} else if (begin_at == 0) {
-							buff[io[0]].push(chunk);
-						} else if (chunk.length - close_at == 2) {
-							buff[io[0]].push(chunk);
-							swap(io);
-							stream.broadcast(Buffer.concat(buff[io[1]]));
-							buff[io[1]] = [];
-						} else {
-							buff[io[0]].push(chunk);
-						}
-					}
-				});
-			} else if (process.env.EXPRESS_FFMPEG_PIPE || config.output === 'pipe') {
-				sub = spawn('ffmpeg', [
-					'-f', 'v4l2',
-					'-input_format', config.resource_format,
+					'-f', config.kernel,
+					//'-input_format', config.resource_format,
 					'-i', config.resource,
 					'-q:v', config.quality,
 					'-r', config.fps,
@@ -99,8 +65,8 @@ function ffmpeg() {
 				});
 			} else {
 				sub = spawn('ffmpeg', [
-					'-f', 'v4l2',
-					'-input_format', config.resource_format,
+					'-f', config.kernel,
+					//'-input_format', config.resource_format,
 					'-i', config.resource,
 					'-q:v', config.quality,
 					'-r', config.fps,
@@ -213,11 +179,35 @@ router.get('/:hash/ffmpeg/config', (req, res) => {
 	res.json(config);
 });
 
+router.get('/:hash/ffmpeg/restart', async (req, res) => {
+	let flag = true;
+	let err = '';
+	try {
+		await (new Promise(resolve => {
+			instance.kill(9);
+			wait(() => (instance.exitCode != null || instance.killed), resolve);
+		}));
+		instance = { kill: () => { }, killed: true, exitCode: 1 };
+		await ffmpeg();
+		mounted = true;
+	} catch (error) {
+		flag = false;
+		err = error.message;
+	}
+
+	if (flag) {
+		res.status(202).send('Accept');
+	} else {
+		res.status(422).send(err);
+	}
+});
+
 router.put('/:hash/ffmpeg/config', async (req, res) => {
 	let flag = true;
 	let err = { message: 'unknown error occur' };
 	try {
 		let {
+			kernel = config.kernel,
 			quality = config.quality,
 			fps = config.fps,
 			width = config.width,
@@ -227,6 +217,7 @@ router.put('/:hash/ffmpeg/config', async (req, res) => {
 			resource_format = config.resource_format,
 			output = config.output,
 		} = req.body;
+		config.kernel = /^dshow|^v4l2/.test(config.kernel) || config.kernel;
 		config.quality = Math.floor(quality) || config.quality;
 		config.fps = Math.floor(fps) || config.fps;
 		config.width = Math.floor(width) || config.width;
