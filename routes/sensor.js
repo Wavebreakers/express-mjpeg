@@ -13,11 +13,11 @@ let instance = { kill: () => { }, killed: true, exitCode: 1 };
 let config = {
 	kernel: 'dshow',
 	quality: 2, // 2-31; lower to higher quality
-	fps: 24,
-	width: 1280,
-	height: 960,
+	fps: 12,
+	width: 960,
+	height: 720,
 	chunk_size: 1024, // udp chunk size
-	resource: 'video=USB Video Device',
+	resource: `video=${process.env.FFMPEG_USB_DEVICE || 'USB Video Device'}`,
 	resource_format: 'mjpeg',
 	output: 'pipe', // pipe|udp
 };
@@ -217,7 +217,7 @@ router.put('/:hash/ffmpeg/config', async (req, res) => {
 			resource_format = config.resource_format,
 			output = config.output,
 		} = req.body;
-		config.kernel = /^dshow|^v4l2/.test(config.kernel) || config.kernel;
+		config.kernel = /^dshow|^v4l2/.test(kernel) ? kernel : config.kernel;
 		config.quality = Math.floor(quality) || config.quality;
 		config.fps = Math.floor(fps) || config.fps;
 		config.width = Math.floor(width) || config.width;
