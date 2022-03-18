@@ -11,12 +11,12 @@ let stream = new MJpegStream(tunnel);
 let mounted = process.env.EXPRESS_FFMPEG_SKIP ? true : false;
 let instance = { kill: () => { }, killed: true, exitCode: 1 };
 let config = {
-	kernel: 'dshow',
-	quality: 2, // 2-31; lower to higher quality
-	fps: 12,
-	width: 960,
-	height: 720,
-	chunk_size: 1024, // udp chunk size
+	kernel: process.env.FFMPEG_KERNEL || 'dshow',
+	quality: process.env.FFMPEG_QUALITY || 2, // 2-31; lower to higher quality
+	fps: process.env.FFMPEG_FPS || 24,
+	width: process.env.FFMPEG_WIDTH || 960,
+	height: process.env.FFMPEG_HEIGHT || 720,
+	chunk_size: process.env.FFMPEG_CHUNK_SIZE || 1024, // udp chunk size
 	resource: `video=${process.env.FFMPEG_USB_DEVICE || 'USB Video Device'}`,
 	resource_format: 'mjpeg',
 	output: 'pipe', // pipe|udp
